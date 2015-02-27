@@ -1,7 +1,8 @@
 This is a gateway script to communicate between RFM69 nodes and an MQTT broker. Ported from https://github.com/computourist/RFM69-MQTT-client to python.
 
 Prereqs:
-  you also need the python paho library for mqtt.
+
+  you need the python paho library for mqtt.
 
   You also need my RFM69 library to be in the gateway directory:
   
