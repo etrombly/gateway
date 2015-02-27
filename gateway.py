@@ -7,7 +7,6 @@ import struct
 import sys
 import signal
 import time
-import subprocess
 
 VERSION = "2.1"
 NETWORKID = 1
@@ -78,8 +77,8 @@ class Gateway(object):
             if message.nodeID == 1:
                 if message.devID == 0:
                     try:
-                        hours, minutes = subprocess.check_output(['uptime']).split("up ")[1][:5].split(":")
-                        uptime = (int(hours) * 60) + int(minutes)
+                        with open('/proc/uptime', 'r') as uptime_file:
+                            uptime = int(float(uptime_file.readline().split()[0]) / 60)
                     except:
                         uptime = 0
                     self.mqttc.publish("home/rfm_gw/nb/node01/dev00", uptime)
