@@ -152,8 +152,6 @@ class Gateway(object):
     def stop(self):
         self.mqttc.loop_stop()
 
-gw = Gateway(FREQ, NETWORKID, KEY)
-
 def handler(signum, frame):
     print "\nExiting..."
     gw.stop()
@@ -161,14 +159,9 @@ def handler(signum, frame):
 
 signal.signal(signal.SIGINT, handler)
 
+gw = Gateway(FREQ, NETWORKID, KEY)
+
 if __name__ == "__main__":
-    message = Message()
-    message.setMessage(1, 0, 1, 3, 4.5)
-    time.sleep(1)
-    gw.mqttc.publish("home/rfm_gw/sb/node%02d/dev%02d" % (message.nodeID, message.devID), message.payload)
-    gw.mqttc.publish("home/rfm_gw/sb/node%02d/dev%02d" % (1, 3), "READ")
-    gw.mqttc.publish("home/rfm_gw/sb/node%02d/dev%02d" % (2, 5), "READ")
-    gw.mqttc.publish("home/rfm_gw/sb/node%02d/dev%02d" % (2, 5), "ON")
     while True:
         gw.receiveBegin()
         while not gw.receiveDone():
