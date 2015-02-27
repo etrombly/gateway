@@ -13,9 +13,8 @@ Prereqs:
 
 example demo.sitemap:
 
-sitemap demo label="Main Menu"
-
 ```
+sitemap demo label="Main Menu"
 {
         Frame label="Gateway"{
                 Text item=item_uptime_mqtt
