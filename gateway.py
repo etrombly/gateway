@@ -10,6 +10,8 @@ import time
 import subprocess
 
 VERSION = "2.1"
+NETWORKID = 1
+KEY = "1234567891011121"
 
 class Message(object):
     def __init__(self, message = None):
@@ -36,7 +38,7 @@ class Message(object):
                 self.s.unpack(self.message)
 
 class Gateway(object):
-    def __init__(self, key = "1234567891011121"):
+    def __init__(self, networkID, key):
         self.mqttc = mqtt.Client()
         self.mqttc.on_connect = self.mqttConnect
         self.mqttc.on_message = self.mqttMessage
@@ -44,7 +46,7 @@ class Gateway(object):
         self.mqttc.loop_start()
         print "mqtt init complete"
         
-        self.radio = RFM69.RFM69(RF69_915MHZ, 1, 1, True)
+        self.radio = RFM69.RFM69(RF69_915MHZ, 1, networkID, True)
         self.radio.rcCalibration()
         self.radio.encrypt(key)
         print "radio init complete"
@@ -74,8 +76,11 @@ class Gateway(object):
             
             if message.nodeID == 1:
                 if message.devID == 0:
-                    hours, minutes = subprocess.check_output(['uptime']).split(" ")[4][0:-1].split(":")
-                    uptime = (int(hours) * 60) + int(minutes)
+                    try:
+                        hours, minutes = subprocess.check_output(['uptime']).split("up ")[1][:5].split(":")
+                        uptime = (int(hours) * 60) + int(minutes)
+                    except:
+                        uptime = 0
                     self.mqttc.publish("home/rfm_gw/nb/node01/dev00", uptime)
                 elif message.devID == 3:
                     self.mqttc.publish("home/rfm_gw/nb/node01/dev03", VERSION)
@@ -146,7 +151,7 @@ class Gateway(object):
     def stop(self):
         self.mqttc.loop_stop()
 
-gw = Gateway()
+gw = Gateway(NETWORKID, KEY)
 
 def handler(signum, frame):
     print "\nExiting..."
