@@ -12,6 +12,7 @@ import subprocess
 VERSION = "2.1"
 NETWORKID = 1
 KEY = "1234567891011121"
+FREQ = RF69_915MHZ #options are RF69_915MHZ, RF69_868MHZ, RF69_433MHZ, RF69_315MHZ
 
 class Message(object):
     def __init__(self, message = None):
@@ -38,7 +39,7 @@ class Message(object):
                 self.s.unpack(self.message)
 
 class Gateway(object):
-    def __init__(self, networkID, key):
+    def __init__(self, freq, networkID, key):
         self.mqttc = mqtt.Client()
         self.mqttc.on_connect = self.mqttConnect
         self.mqttc.on_message = self.mqttMessage
@@ -46,7 +47,7 @@ class Gateway(object):
         self.mqttc.loop_start()
         print "mqtt init complete"
         
-        self.radio = RFM69.RFM69(RF69_915MHZ, 1, networkID, True)
+        self.radio = RFM69.RFM69(freq, 1, networkID, True)
         self.radio.rcCalibration()
         self.radio.encrypt(key)
         print "radio init complete"
@@ -151,7 +152,7 @@ class Gateway(object):
     def stop(self):
         self.mqttc.loop_stop()
 
-gw = Gateway(NETWORKID, KEY)
+gw = Gateway(FREQ, NETWORKID, KEY)
 
 def handler(signum, frame):
     print "\nExiting..."
