@@ -121,8 +121,6 @@ class Gateway(object):
         message = Message(packet)
         buff = None
         
-        print message.nodeID, message.devID, message.payload
-        
         statMess = message.devID in [5, 6, 8] + range(16, 31)
         realMess = message.devID in [4] + range(48, 63) and message.cmd == 1
         intMess = message.devID in [0, 1, 2, 7] + range(16, 31)
