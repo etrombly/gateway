@@ -22,7 +22,7 @@ class Message(object):
         self.intVal = 0
         self.fltVal = 0.0
         self.payload = ""
-        self.s = struct.Struct('bbblf34s')
+        self.s = struct.Struct('<hhhlf32s')
         self.message = message
         if message:
             self.getMessage()
@@ -35,8 +35,11 @@ class Message(object):
         self.getMessage()
         
     def getMessage(self):
-        self.nodeID, self.devID, self.cmd, self.intVal, self.fltVal, self.payload = \
+        try:
+            self.nodeID, self.devID, self.cmd, self.intVal, self.fltVal, self.payload = \
                 self.s.unpack_from(buffer(self.message))
+        except:
+            print "could not extract message"
 
 class Gateway(object):
     def __init__(self, freq, networkID, key):
@@ -117,6 +120,8 @@ class Gateway(object):
     def processPacket(self, packet):
         message = Message(packet)
         buff = None
+        
+        print message.nodeID, message.devID, message.payload
         
         statMess = message.devID in [5, 6, 8] + range(16, 31)
         realMess = message.devID in [4] + range(48, 63) and message.cmd == 1
