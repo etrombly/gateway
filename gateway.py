@@ -7,6 +7,7 @@ import struct
 import sys
 import signal
 import time
+import binascii
 
 VERSION = "2.1"
 NETWORKID = 1
@@ -21,7 +22,7 @@ class Message(object):
         self.intVal = 0
         self.fltVal = 0.0
         self.payload = ""
-        self.s = struct.Struct('iiilf32s')
+        self.s = struct.Struct('bbblf34s')
         self.message = message
         if message:
             self.getMessage()
@@ -35,7 +36,7 @@ class Message(object):
         
     def getMessage(self):
         self.nodeID, self.devID, self.cmd, self.intVal, self.fltVal, self.payload = \
-                self.s.unpack(self.message)
+                self.s.unpack_from(buffer(self.message))
 
 class Gateway(object):
     def __init__(self, freq, networkID, key):
@@ -96,7 +97,10 @@ class Gateway(object):
                         self.error(3, message.nodeID)
                         return
                 elif realMess:
-                    message.fltVal = float(message.payload)
+                    try:
+                        message.fltVal = float(message.payload)
+                    except:
+                        pass
                 elif intMess:
                     if message.cmd == 0:
                         message.intVal = int(message.payload)
@@ -115,9 +119,9 @@ class Gateway(object):
         buff = None
         
         statMess = message.devID in [5, 6, 8] + range(16, 31)
-        realMess = message.devID in [0, 2, 3, 4] + range(40, 71) and message.cmd == 1
-        intMess = message.devID in [1, 7] + range(32, 39)
-        strMess = message.devID == 72
+        realMess = message.devID in [4] + range(48, 63) and message.cmd == 1
+        intMess = message.devID in [0, 1, 2, 7] + range(16, 31)
+        strMess = message.devID in [3, 72]
         
         if intMess:
             buff = "%d" % (message.intVal, )
@@ -165,7 +169,7 @@ if __name__ == "__main__":
         gw.receiveBegin()
         while not gw.receiveDone():
             time.sleep(.1)
-        packet = gw.radio.DATA
+        packet = bytearray(gw.radio.DATA)
         if gw.radio.ACKRequested():
             gw.radio.sendACK()
         gw.processPacket(packet)
