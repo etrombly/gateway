@@ -180,6 +180,7 @@ if __name__ == "__main__":
                 gw.sendMessage(message)
             except Queue.Empty:
                 pass
+            time.sleep(.1)
         if gw.radio.ACK_RECEIVED:
             continue
         packet = bytearray(gw.radio.DATA)
