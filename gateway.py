@@ -7,12 +7,13 @@ import struct
 import sys
 import signal
 import time
-import binascii
+import Queue
 
 VERSION = "2.1"
 NETWORKID = 1
 KEY = "1234567891011121"
 FREQ = RF69_915MHZ #options are RF69_915MHZ, RF69_868MHZ, RF69_433MHZ, RF69_315MHZ
+writeQ = Queue.Queue()
 
 class Message(object):
     def __init__(self, message = None):
@@ -115,7 +116,7 @@ class Gateway(object):
                     return
             
             message.setMessage()
-            self.sendMessage(message)
+            writeQ.put(message)
         
     def processPacket(self, packet):
         message = Message(packet)
@@ -148,7 +149,7 @@ class Gateway(object):
             self.mqttc.publish("home/rfm_gw/nb/node%02d/dev%02d" % (message.nodeID, message.devID), buff)
     
     def sendMessage(self, message):
-        if not self.radio.sendWithRetry(message.nodeID, message.message, 5, 20):
+        if not self.radio.sendWithRetry(message.nodeID, message.message, 5, 30):
             self.mqttc.publish("home/rfm_gw/nb/node%02d/dev90" % (message.nodeID, ), 
                                "connection lost node %d" % (message.nodeID))
     
@@ -156,7 +157,10 @@ class Gateway(object):
         self.mqttc.publish("home/rfm_gw/nb/node01/dev91", "syntax error %d for node %d" % (code, dest))
 
     def stop(self):
+        print "shutting down mqqt"
         self.mqttc.loop_stop()
+        print "shutting down radio"
+        self.radio.shutdown()
 
 def handler(signum, frame):
     print "\nExiting..."
@@ -171,7 +175,13 @@ if __name__ == "__main__":
     while True:
         gw.receiveBegin()
         while not gw.receiveDone():
-            time.sleep(.1)
+            try:
+                message = writeQ.get(block = False)
+                gw.sendMessage(message)
+            except Queue.Empty:
+                pass
+        if gw.radio.ACK_RECEIVED:
+            continue
         packet = bytearray(gw.radio.DATA)
         if gw.radio.ACKRequested():
             gw.radio.sendACK()
