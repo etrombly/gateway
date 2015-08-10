@@ -19,7 +19,7 @@ class Message(object):
     def __init__(self, message = None):
         self.nodeID = 0
         self.devID = 0
-        self.packetID
+        self.packetID = 0
         self.cmd = 0
         self.intVal = 0
         self.fltVal = 0.0
