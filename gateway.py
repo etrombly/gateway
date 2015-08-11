@@ -11,9 +11,9 @@ import Queue
 
 VERSION = "2.1"
 NETWORKID = 1
+NODEID = 1
 KEY = "1234567891011121"
 FREQ = RF69_915MHZ #options are RF69_915MHZ, RF69_868MHZ, RF69_433MHZ, RF69_315MHZ
-writeQ = Queue.Queue()
 
 class Message(object):
     def __init__(self, message = None):
@@ -33,7 +33,7 @@ class Message(object):
         if nodeID:
             self.message = self.s.pack(nodeID, devID, packetID, cmd, intVal, fltVal, payload)
         else:
-            self.message = self.s.pack(self.nodeID, self.devID,self.packetID,  self.cmd, self.intVal, self.fltVal, self.payload)
+            self.message = self.s.pack(self.nodeID, self.devID, self.packetID,  self.cmd, self.intVal, self.fltVal, self.payload)
         self.getMessage()
 
     def getMessage(self):
@@ -57,6 +57,9 @@ class Gateway(object):
         self.radio.encrypt(key)
         print "radio init complete"
 
+        self.messageBuffer =[]
+        self.packetID = 0
+
     def receiveBegin(self):
         self.radio.receiveBegin()
 
@@ -71,6 +74,8 @@ class Gateway(object):
         if len(msg.topic) == 27:
             message.nodeID = int(msg.topic[19:21])
             message.devID = int(msg.topic[25:27])
+            message.packetID = self.packetID
+            self.packetID += 1
             message.payload = str(msg.payload)
             if message.payload == "READ":
                 message.cmd = 1
@@ -117,11 +122,20 @@ class Gateway(object):
                     return
 
             message.setMessage()
-            writeQ.put(message)
+            self.messageBuffer.append([message, 4, time.time()])
 
-    def processPacket(self, packet):
+    def processPacket(self, packet, sender):
         message = Message(packet)
         buff = None
+        match = None
+
+        for packet in self.messageBuffer:
+            if packet[0].packetID == message.packetID:
+                match = packet
+                print "ack recieved for", message.packetID
+
+        if match:
+            self.messageBuffer.remove(match)
 
         statMess = message.devID in [5, 6, 8] + range(16, 31)
         realMess = message.devID in [4] + range(48, 63) and message.cmd == 1
@@ -149,10 +163,27 @@ class Gateway(object):
         if buff:
             self.mqttc.publish("home/rfm_gw/nb/node%02d/dev%02d" % (message.nodeID, message.devID), buff)
 
-    def sendMessage(self, message):
-        if not self.radio.sendWithRetry(message.nodeID, message.message, 5, 30):
-            self.mqttc.publish("home/rfm_gw/nb/node%02d/dev90" % (message.nodeID, ),
-                               "connection lost node %d" % (message.nodeID))
+        message.nodeID = sender
+        message.cmd = 3
+        message.setMessage()
+        self.messageBuffer.append([message, 1, time.time()])
+
+    def processMessages(self):
+        expired = []
+        for message in self.messageBuffer:
+            if message[1] < 1:
+                expired.append(message)
+                print message[0].packetID, "not recieved"
+                next
+            if message[1] == 4 or time.time() > message[2] + 1:
+                self.radio.send(message[0].nodeID, message[0].message)
+                message[1] -= 1
+                message[2] = time.time()
+        for message in expired:
+            self.messageBuffer.remove(message)
+        #if not self.radio.sendWithRetry(message.nodeID, message.message, 5, 30):
+        #    self.mqttc.publish("home/rfm_gw/nb/node%02d/dev90" % (message.nodeID, ),
+        #                       "connection lost node %d" % (message.nodeID))
 
     def error(self, code, dest):
         self.mqttc.publish("home/rfm_gw/nb/node01/dev91", "syntax error %d for node %d" % (code, dest))
@@ -176,15 +207,9 @@ if __name__ == "__main__":
     while True:
         gw.receiveBegin()
         while not gw.receiveDone():
-            try:
-                message = writeQ.get(block = False)
-                gw.sendMessage(message)
-            except Queue.Empty:
-                pass
-            time.sleep(.1)
+            gw.processMessages()
+            #time.sleep(.1)
         if gw.radio.ACK_RECEIVED:
             continue
         packet = bytearray(gw.radio.DATA)
-        if gw.radio.ACKRequested():
-            gw.radio.sendACK()
-        gw.processPacket(packet)
+        gw.processPacket(packet, gw.radio.SENDERID)
