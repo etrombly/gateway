@@ -19,8 +19,8 @@ class Message(object):
     def __init__(self, message = None):
         self.nodeID = 0
         self.devID = 0
-        self.packetID = 0
         self.cmd = 0
+        self.packetID = 0
         self.intVal = 0
         self.fltVal = 0.0
         self.payload = ""
@@ -29,17 +29,18 @@ class Message(object):
         if message:
             self.getMessage()
 
-    def setMessage(self, nodeID = None, devID = None, packetID= 0, cmd = 0, intVal = 0, fltVal = 0.0, payload = ""):
+    def setMessage(self, nodeID = None, devID = 1, cmd = 0, packetID = 0, intVal = 0, fltVal = 0.0, payload = ""):
         if nodeID:
-            self.message = self.s.pack(nodeID, devID, packetID, cmd, intVal, fltVal, payload)
+            self.message = self.s.pack(nodeID, devID, cmd, packetID, intVal, fltVal, payload)
+            self.nodeID, self.devID, self.cmd, self.packetID, self.intVal, self.fltVal, self.payload = nodeID, devID, cmd, packetID, intVal, fltVal, payload
         else:
-            self.message = self.s.pack(self.nodeID, self.devID, self.packetID,  self.cmd, self.intVal, self.fltVal, self.payload)
-        self.getMessage()
+            self.message = self.s.pack(self.nodeID, self.devID, self.cmd, self.packetID, self.intVal, self.fltVal, self.payload)
 
     def getMessage(self):
         try:
-            self.nodeID, self.devID, self.packetID, self.cmd, self.intVal, self.fltVal, self.payload = \
+            self.nodeID, self.devID, self.cmd, self.packetID, self.intVal, self.fltVal, self.payload = \
                 self.s.unpack_from(buffer(self.message))
+            self.setMessage()
         except:
             print "could not extract message"
 
@@ -58,7 +59,14 @@ class Gateway(object):
         print "radio init complete"
 
         self.messageBuffer =[]
-        self.packetID = 0
+        self.packetID = 1
+
+    def incPacketID(self):
+        if self.packetID < 255:
+            self.packetID += 1
+        else:
+            self.packetID = 1
+        return self.packetID
 
     def receiveBegin(self):
         self.radio.receiveBegin()
@@ -74,8 +82,7 @@ class Gateway(object):
         if len(msg.topic) == 27:
             message.nodeID = int(msg.topic[19:21])
             message.devID = int(msg.topic[25:27])
-            message.packetID = self.packetID
-            self.packetID += 1
+            message.packetID = self.incPacketID()
             message.payload = str(msg.payload)
             if message.payload == "READ":
                 message.cmd = 1
@@ -122,20 +129,26 @@ class Gateway(object):
                     return
 
             message.setMessage()
-            self.messageBuffer.append([message, 4, time.time()])
+            self.messageBuffer.append([message, 4, int(time.time() * 1000)])
 
-    def processPacket(self, packet, sender):
+    def processPacket(self, packet, sender, ack):
         message = Message(packet)
         buff = None
         match = None
 
-        for packet in self.messageBuffer:
-            if packet[0].packetID == message.packetID:
-                match = packet
-                print "ack recieved for", message.packetID
+        #print "received packet nodeID:", message.nodeID, " packetID: ", message.packetID
+
+        if ack:
+            for packet in self.messageBuffer:
+                if packet[0].packetID == message.packetID and packet[0].nodeID == message.nodeID:
+                    match = packet
+                    #print "ack recieved for", message.packetID
 
         if match:
             self.messageBuffer.remove(match)
+            return
+
+        self.sendAck(sender, message)
 
         statMess = message.devID in [5, 6, 8] + range(16, 31)
         realMess = message.devID in [4] + range(48, 63) and message.cmd == 1
@@ -161,29 +174,28 @@ class Gateway(object):
             buff = "NODE %d WAKEUP" % (message.nodeID, )
 
         if buff:
+            #print "home/rfm_gw/nb/node%02d/dev%02d" % (message.nodeID, message.devID), buff
             self.mqttc.publish("home/rfm_gw/nb/node%02d/dev%02d" % (message.nodeID, message.devID), buff)
 
-        message.nodeID = sender
-        message.cmd = 3
-        message.setMessage()
-        self.messageBuffer.append([message, 1, time.time()])
+    def sendAck(self, sendTo, message):
+        #print "Sending ack nodeID: ", message.nodeID, " packetID: ", message.packetID, " to ", sendTo
+        self.radio.sendACK(sendTo, message.message)
 
     def processMessages(self):
         expired = []
         for message in self.messageBuffer:
             if message[1] < 1:
                 expired.append(message)
-                print message[0].packetID, "not recieved"
+                #if message[1] == 0:
+                    #print message[0].nodeID, message[0].packetID, "not received"
                 next
-            if message[1] == 4 or time.time() > message[2] + 1:
+            if message[1] == 4 or int(time.time() * 1000) > message[2] + 100:
+                #print "sending nodeID: ", message[0].nodeID, "packetID: ", message[0].packetID
                 self.radio.send(message[0].nodeID, message[0].message)
                 message[1] -= 1
-                message[2] = time.time()
+                message[2] = int(time.time() * 1000)
         for message in expired:
             self.messageBuffer.remove(message)
-        #if not self.radio.sendWithRetry(message.nodeID, message.message, 5, 30):
-        #    self.mqttc.publish("home/rfm_gw/nb/node%02d/dev90" % (message.nodeID, ),
-        #                       "connection lost node %d" % (message.nodeID))
 
     def error(self, code, dest):
         self.mqttc.publish("home/rfm_gw/nb/node01/dev91", "syntax error %d for node %d" % (code, dest))
@@ -212,4 +224,4 @@ if __name__ == "__main__":
         if gw.radio.ACK_RECEIVED:
             continue
         packet = bytearray(gw.radio.DATA)
-        gw.processPacket(packet, gw.radio.SENDERID)
+        gw.processPacket(packet, gw.radio.SENDERID, gw.radio.ACK_RECEIVED)
